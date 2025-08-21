@@ -1869,8 +1869,9 @@ func (g *Generator) propertyVariable(parentPath paths.TypePath, key string,
 		}
 		// Suppress write-only attributes via SchemaInfo.Omit
 		// TODO[pulumi/pulumi-terraform-bridge#2938] remove when the bridge fully supports write-only fields.
+		// Only suppress optional write-only fields to avoid breaking required ones.
 
-		if shimSchema.WriteOnly() {
+		if shimSchema.WriteOnly() && shimSchema.Optional() {
 			if info == nil {
 				info = make(map[string]*tfbridge.SchemaInfo)
 			}

@@ -1684,7 +1684,14 @@ func extractInputsObject(
 			_, etfs, eps := getInfoFromPulumiName(name, tfs, ps)
 			oldInput[name], defaultElem = extractInputs(oldValue, newValue, etfs, eps)
 		} else {
-			delete(oldInput, name)
+			// Check if this is a write-only field before deleting
+			_, etfs, _ := getInfoFromPulumiName(name, tfs, ps)
+			if etfs != nil && etfs.WriteOnly() {
+				// Preserve write-only fields from old inputs since they won't be in Terraform state
+				defaultElem = false
+			} else {
+				delete(oldInput, name)
+			}
 		}
 		if !defaultElem {
 			possibleDefault = false

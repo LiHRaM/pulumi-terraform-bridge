@@ -450,7 +450,7 @@ func TestBridgeOmitsWriteOnlyFields(t *testing.T) {
 	assert.Len(t, spec.Resources["test:index:NoWriteOnly"].InputProperties, 1)
 }
 
-func TestOmitWriteOnlyFieldsErrorWhenNotOptional(t *testing.T) {
+func TestRequiredWriteOnlyFieldsAreIncluded(t *testing.T) {
 	t.Parallel()
 	p := (&shimschema.Provider{
 		ResourcesMap: shimschema.ResourceMap{
@@ -471,7 +471,7 @@ func TestOmitWriteOnlyFieldsErrorWhenNotOptional(t *testing.T) {
 	nilSink := diag.DefaultSink(io.Discard, io.Discard, diag.FormatOptions{
 		Color: colors.Never,
 	})
-	_, err := GenerateSchemaWithOptions(GenerateSchemaOptions{
+	schemaResult, err := GenerateSchemaWithOptions(GenerateSchemaOptions{
 		DiagnosticsSink: nilSink,
 		ProviderInfo: tfbridge.ProviderInfo{
 			Name: "test",
@@ -481,9 +481,60 @@ func TestOmitWriteOnlyFieldsErrorWhenNotOptional(t *testing.T) {
 			},
 		},
 	})
-	require.Error(t, err)
-	//nolint:lll
-	require.ErrorContains(t, err, "required property \"password_wo[pulumi:\\\"passwordWo\\\"]\" (@ resource[key=\"test_res_wo\",token=\"test:index:WriteOnly\"].outputs.password_wo[pulumi:\"passwordWo\"]) may not be omitted from binding generation\n\n")
+	require.NoError(t, err)
+	// Verify that required write-only fields are now included as input properties
+	spec := schemaResult.PackageSpec
+	require.Len(t, spec.Resources, 1)
+	resource := spec.Resources["test:index:WriteOnly"]
+	require.NotNil(t, resource)
+	require.Len(t, resource.InputProperties, 1)
+	require.Contains(t, resource.InputProperties, "passwordWo")
+}
+
+func TestOptionalWriteOnlyFieldsAreOmitted(t *testing.T) {
+	t.Parallel()
+	p := (&shimschema.Provider{
+		ResourcesMap: shimschema.ResourceMap{
+			"test_res_wo": (&shimschema.Resource{
+				Schema: shimschema.SchemaMap{
+					"optional_password_wo": (&shimschema.Schema{
+						Type:      shim.TypeString,
+						WriteOnly: true,
+						Optional:  true,
+					}).Shim(),
+					"normal_field": (&shimschema.Schema{
+						Type:     shim.TypeString,
+						Optional: true,
+					}).Shim(),
+				},
+			}).Shim(),
+		},
+	}).Shim()
+	resWO := &tfbridge.ResourceInfo{
+		Tok: "test:index:WriteOnly",
+	}
+	nilSink := diag.DefaultSink(io.Discard, io.Discard, diag.FormatOptions{
+		Color: colors.Never,
+	})
+	schemaResult, err := GenerateSchemaWithOptions(GenerateSchemaOptions{
+		DiagnosticsSink: nilSink,
+		ProviderInfo: tfbridge.ProviderInfo{
+			Name: "test",
+			P:    p,
+			Resources: map[string]*tfbridge.ResourceInfo{
+				"test_res_wo": resWO,
+			},
+		},
+	})
+	require.NoError(t, err)
+	// Verify that optional write-only fields are omitted, but normal fields are included
+	spec := schemaResult.PackageSpec
+	require.Len(t, spec.Resources, 1)
+	resource := spec.Resources["test:index:WriteOnly"]
+	require.NotNil(t, resource)
+	require.Len(t, resource.InputProperties, 1)
+	require.Contains(t, resource.InputProperties, "normalField")
+	require.NotContains(t, resource.InputProperties, "optionalPasswordWo")
 }
 
 func TestModulePlacementForType(t *testing.T) {
